@@ -1,0 +1,18 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/blackjack  # MongoDB connection
+
+  r2dbc:
+    url: r2dbc:mysql://localhost:3306/blackjack  # MySQL R2DBC connection
+    username: root
+    password: kawaiitreceplatano88
+
+# Enable debugging logs for better troubleshooting
+logging:
+  level:
+    org.springframework.r2dbc: DEBUG
+    org.springframework.data.mongodb: DEBUG
+
+  main:
+    allow-bean-definition-overriding: true
