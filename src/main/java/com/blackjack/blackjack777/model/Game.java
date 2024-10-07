@@ -1,9 +1,8 @@
 package com.blackjack.blackjack777.model;
 
-
-import lombok.Getter;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.mongodb.core.mapping.Document;
 import lombok.Data;
 import java.util.List;
@@ -14,7 +13,7 @@ public class Game {
 
     @Id
     private String id;
-    private String playerId;
+    private Long playerId;
     private List<Card> playerHand;
     private List<Card> dealerHand;
     private String status;
@@ -22,8 +21,11 @@ public class Game {
     private int dealerSum;
     private int playerAce;
     private int dealerAce;
-    @Setter
-    @Getter
+
+
+
+    @Transient
+    @JsonIgnore
     private Deck deck;
 
 }

@@ -26,39 +26,71 @@ public class GameService {
 
     public Mono<Game> createGame(String playerName) {
         Game game = new Game();
-        Deck deck = new Deck(); // Initialize deck once
+        Deck deck = new Deck(); // Initialize and shuffle the deck in memory
 
         // Step 1: Check if the player exists in the database
         return findPlayerByName(playerName)
                 .flatMap(player -> {
-                    // If player exists, set playerId from the existing player
-                    game.setPlayerId(player.getId()); // Ensure you get the ID as a String
+                    // Set playerId from the existing player
+                    game.setPlayerId(player.getId());
                     return Mono.just(player);
                 })
                 .switchIfEmpty(Mono.defer(() -> {
-                    // If player does not exist, create and save the player with the given name
+                    // Create and save the player if they don't exist
                     Player newPlayer = new Player();
-                    newPlayer.setName(playerName); // Set the player name
-                    return savePlayer(String.valueOf(newPlayer))
-                            .doOnNext(savedPlayer -> game.setPlayerId(savedPlayer.getId())); // Set playerId after saving
+                    newPlayer.setName(playerName);
+                    return savePlayer(newPlayer)
+                            .doOnNext(savedPlayer -> game.setPlayerId(savedPlayer.getId()));
                 }))
                 .then(Mono.defer(() -> {
-                    // Step 2: Set up game details
+                    // Deal initial cards to player and dealer, no need to store the deck
                     game.setPlayerHand(new ArrayList<>());
                     game.setDealerHand(new ArrayList<>());
                     game.setStatus("IN_PROGRESS");
 
-                    // Store the deck in the game
-                    game.setDeck(deck);
+                    addCardsPlayer(game, deck);  // Deal cards to player from shuffled deck
+                    addCardsDealer(game, deck);  // Deal cards to dealer from shuffled deck
 
-                    // Step 3: Deal initial cards to player and dealer
-                    addCardsPlayer(game, deck);
-                    addCardsDealer(game, deck);
+                    // Calculate playerSum, dealerSum, playerAce, and dealerAce
+                    int playerSum = calculateScore(game.getPlayerHand());
+                    int dealerSum = calculateScore(game.getDealerHand());
+                    int playerAceCount = countAces(game.getPlayerHand());
+                    int dealerAceCount = countAces(game.getDealerHand());
 
-                    // Step 4: Save the new game to the MongoDB repository
+                    // Set these values in the game object
+                    game.setPlayerSum(playerSum);
+                    game.setDealerSum(dealerSum);
+                    game.setPlayerAce(playerAceCount);
+                    game.setDealerAce(dealerAceCount);
+
+                    // Save the new game to MongoDB without storing the deck itself
                     return gameRepository.save(game);
                 }));
     }
+
+    private int countAces(List<Card> hand) {
+        int aceCount = 0;
+        for (Card card : hand) {
+            if ("A".equals(card.getValue())) {
+                aceCount++;
+            }
+        }
+        return aceCount;
+    }
+    public Mono<Game> play(String gameId, Long playerId, String action) {
+        return gameRepository.findById(gameId)
+                .flatMap(game -> {
+                    // Convert playerId to Long
+                    if (!game.getPlayerId().equals(playerId)) {
+                        return Mono.error(new IllegalStateException("Player ID does not match the game"));
+                    }
+
+                    Deck deck = new Deck();  // Initialize a new deck in memory for the play action
+                    return handlePlayerAction(game, action, deck);  // Pass deck in memory
+                });
+    }
+
+
 
     // Update findPlayer method to search by name
     private Mono<Player> findPlayerByName(String playerName) {
@@ -66,12 +98,10 @@ public class GameService {
     }
 
 
-    private Mono<Player> savePlayer(String playerName) {
-        // Create a new player with an auto-generated UUID and save to the R2DBC MySQL database
-        Player player = new Player();  // UUID will be automatically generated
-        player.setName(playerName);    // Set the player's name
+    private Mono<Player> savePlayer(Player player) {
         return playerRepository.save(player);  // Save the player in the database
     }
+
 
 
     private void addCardsPlayer(Game game, Deck deck) {
@@ -84,32 +114,22 @@ public class GameService {
         game.getDealerHand().add(deck.dealCard());
     }
 
-    // Player makes a move (hit or stand)
-    public Mono<Game> play(String gameId, String playerId, String action) {
-        return gameRepository.findById(gameId)
-                .flatMap(game -> {
-                    if (!game.getPlayerId().equals(playerId)) {
-                        return Mono.error(new IllegalStateException("Player ID does not match game"));
-                    }
-                    log.info("Player {} performs action: {}", playerId, action);
-                    return handlePlayerAction(game, action);
-                });
-    }
 
     // Handle player action (hit or stand)
-    private Mono<Game> handlePlayerAction(Game game, String action) {
+    private Mono<Game> handlePlayerAction(Game game, String action, Deck deck) {
         if ("hit".equalsIgnoreCase(action)) {
-            return handlePlayerHit(game);
+            return handlePlayerHit(game, deck);
         } else if ("stand".equalsIgnoreCase(action)) {
-            return handlePlayerStand(game);
+            return handlePlayerStand(game, deck);
         } else {
             return Mono.error(new IllegalArgumentException("Invalid action"));
         }
     }
 
+
     // Handle player hit action
-    private Mono<Game> handlePlayerHit(Game game) {
-        Deck deck = game.getDeck();  // Use the deck stored in the game
+    private Mono<Game> handlePlayerHit(Game game, Deck deck) {
+        // Deal a card to the player from the in-memory deck
         game.getPlayerHand().add(deck.dealCard());
         updatePlayerScore(game);
 
@@ -118,40 +138,66 @@ public class GameService {
             log.info("Player busts with a score of {}.", game.getPlayerSum());
         }
 
-        return gameRepository.save(game);
+        return gameRepository.save(game);  // Save the updated game state
     }
+
 
     // Handle player stand action and play dealer turn
-    private Mono<Game> handlePlayerStand(Game game) {
+    private Mono<Game> handlePlayerStand(Game game, Deck deck) {
         game.setStatus("PLAYER_STAND");
         log.info("Player stands. Dealer's turn.");
-        return playDealerTurn(game);
+        return playDealerTurn(game, deck);
     }
 
+
     // Dealer plays until they reach a score of 17 or more
-    private Mono<Game> playDealerTurn(Game game) {
-        Deck deck = game.getDeck();  // Use the deck stored in the game
+    private Mono<Game> playDealerTurn(Game game, Deck deck) {
         while (game.getDealerSum() < 17) {
-            game.getDealerHand().add(deck.dealCard());
+            game.getDealerHand().add(deck.dealCard());  // Deal card to dealer from in-memory deck
             updateDealerScore(game);
         }
         determineWinner(game);
-        return gameRepository.save(game);
+        return gameRepository.save(game);  // Save the updated game state
     }
+
 
     // Determine the winner between player and dealer
     private void determineWinner(Game game) {
+        Long playerId = game.getPlayerId();
+
         if (game.getDealerSum() > 21 || game.getPlayerSum() > game.getDealerSum()) {
             game.setStatus("PLAYER_WINS");
             log.info("Player wins with score: {}", game.getPlayerSum());
+
+            // Incrementar el puntaje del jugador si gana
+            playerRepository.findById(playerId)
+                    .flatMap(player -> {
+                        int newScore = player.getScore() + 10;  // Incrementar el score en 10
+                        log.info("Updating score for player {} to {}", player.getName(), newScore);
+                        player.setScore(newScore);
+                        return playerRepository.save(player);  // Guardar en MySQL
+                    }).subscribe();
+
         } else if (game.getPlayerSum() == game.getDealerSum()) {
             game.setStatus("DRAW");
             log.info("Game is a draw.");
+            // No cambiar el puntaje en un empate
+
         } else {
             game.setStatus("PLAYER_LOSES");
             log.info("Dealer wins with score: {}", game.getDealerSum());
+
+            // Decrementar el puntaje si pierde
+            playerRepository.findById(playerId)
+                    .flatMap(player -> {
+                        int newScore = Math.max(0, player.getScore() - 5);  // Decrementar el score (pero no por debajo de 0)
+                        log.info("Updating score for player {} to {}", player.getName(), newScore);
+                        player.setScore(newScore);
+                        return playerRepository.save(player);  // Guardar en MySQL
+                    }).subscribe();
         }
     }
+
 
     // Calculate and update the player's score
     private void updatePlayerScore(Game game) {
@@ -206,7 +252,7 @@ public class GameService {
     }
 
     // Change a player's name
-    public Mono<Player> changeName(String playerId, String newPlayerName) {
+    public Mono<Player> changeName(Long playerId, String newPlayerName) {
         return playerRepository.findById(playerId)
                 .flatMap(player -> {
                     player.setName(newPlayerName);

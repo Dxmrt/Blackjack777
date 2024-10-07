@@ -9,17 +9,21 @@ import java.util.UUID;
 
 @Setter
 @Getter
-@Table("players")  // Specify the SQL table name
+@Table("players")  //SQL table name
 public class Player {
 
-    @Id  // This tells R2DBC to use this field as the unique identifier
-    private String id;   // Player ID will be a generated UUID
+    @Id
+    private Long id;
 
     private String name;
     private int score;
 
-    // Constructor that generates a new UUID for the player
-    public Player() {
-        this.id = UUID.randomUUID().toString();  // Generate a unique UUID as a String
+    public int getScore() {
+        return score;
     }
+
+    public void setScore(int score) {
+        this.score = score;
+    }
+
 }

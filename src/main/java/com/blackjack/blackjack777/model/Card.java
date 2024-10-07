@@ -1,8 +1,12 @@
 package com.blackjack.blackjack777.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class Card {
 
-    private String suit;  // e.g., Hearts, Diamonds, Clubs, Spades
+
+    private String suit; // e.g., Hearts, Diamonds, Clubs, Spades
+
     private String value; // e.g., 2, 3, 4, J, Q, K, A
 
     // Constructor

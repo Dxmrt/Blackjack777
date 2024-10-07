@@ -1,12 +1,17 @@
 package com.blackjack.blackjack777.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+
+
 public class Deck {
 
-    private List<Card> cards;
+    @JsonProperty("cards")
+    private  List<Card> cards;
 
     // Constructor to initialize and shuffle the deck
     public Deck() {
@@ -38,6 +43,6 @@ public class Deck {
         if (cards.isEmpty()) {
             throw new IllegalStateException("The deck is empty, cannot deal more cards.");
         }
-        return cards.remove(0);  // Removes and returns the top card
+        return cards.removeFirst();  // Removes and returns the top card
     }
 }
