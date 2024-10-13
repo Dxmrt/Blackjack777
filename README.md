@@ -117,8 +117,7 @@ Create a New Game
 POST /game/new
 Content-Type: application/json
 {
-  "playerId": 1,
-  "bet": 100
+  "playerName": "John Doe"
 }
 
 Fetch Player Ranking
@@ -252,4 +251,3 @@ We welcome contributions! Please follow the steps below to contribute:
 
 
 ---
-
